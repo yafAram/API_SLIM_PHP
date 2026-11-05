@@ -6,19 +6,21 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Slim\Factory\AppFactory;
 use \Firebase\JWT\JWT;
 use \Firebase\JWT\Key;
+use App\Config;
+use App\DotEnv;
+
+// La configuración (base de datos y clave JWT) viene del entorno o del archivo .env
+$config = Config::fromEnv(DotEnv::load(__DIR__ . '/../.env'));
 
 $app = AppFactory::create();
 
-// Habilitar middleware de errores para desarrollo (en producción, configura según sea necesario)
-$app->addErrorMiddleware(true, true, true);
+// Habilitar middleware de errores; los detalles solo se muestran con APP_DEBUG=true
+$app->addErrorMiddleware($config->debug, true, true);
 
-// Configuración de la conexión a la base de datos usando PDO (preparados para evitar SQL Injection)
-$host     = 'localhost';
-$db       = 'api_db';
-$user     = 'root';
-$pass     = '';
-$charset  = 'utf8mb4';
-$dsn      = "mysql:host=$host;dbname=$db;charset=$charset";
+// Conexión a la base de datos usando PDO (consultas preparadas para evitar SQL Injection)
+$dsn      = $config->dbDsn;
+$user     = $config->dbUser;
+$pass     = $config->dbPassword;
 $options  = [
     PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
@@ -31,8 +33,8 @@ try {
     throw new \PDOException($e->getMessage(), (int)$e->getCode());
 }
 
-// Clave secreta para firmar el token JWT (cámbiala en producción)
-$secretKey = 'tu_clave_secreta';
+// Clave secreta para firmar el token JWT (se define en JWT_SECRET)
+$secretKey = $config->jwtSecret;
 
 // Ruta de Login: Recibe username y password, y si son válidos, retorna un JWT
 $app->post('/api/login', function (Request $request, Response $response, $args) use ($pdo, $secretKey) {
@@ -60,7 +62,7 @@ $app->post('/api/login', function (Request $request, Response $response, $args) 
     // Generación del token JWT
     $issuedAt   = new DateTimeImmutable();
     $expire     = $issuedAt->modify('+1 hour')->getTimestamp(); // Token válido por 1 hora
-    $serverName = "your.domain.com"; // Cambia por tu dominio
+    $serverName = $config->jwtIssuer;
 
     $tokenData = [
         'iat'  => $issuedAt->getTimestamp(),         // Tiempo de emisión
