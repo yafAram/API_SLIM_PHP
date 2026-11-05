@@ -7,7 +7,9 @@ use Slim\Factory\AppFactory;
 use \Firebase\JWT\JWT;
 use \Firebase\JWT\Key;
 use App\Config;
+use App\Database;
 use App\DotEnv;
+use App\Repository\UserRepository;
 
 // La configuración (base de datos y clave JWT) viene del entorno o del archivo .env
 $config = Config::fromEnv(DotEnv::load(__DIR__ . '/../.env'));
@@ -17,27 +19,14 @@ $app = AppFactory::create();
 // Habilitar middleware de errores; los detalles solo se muestran con APP_DEBUG=true
 $app->addErrorMiddleware($config->debug, true, true);
 
-// Conexión a la base de datos usando PDO (consultas preparadas para evitar SQL Injection)
-$dsn      = $config->dbDsn;
-$user     = $config->dbUser;
-$pass     = $config->dbPassword;
-$options  = [
-    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    PDO::ATTR_EMULATE_PREPARES   => false,
-];
-
-try {
-    $pdo = new PDO($dsn, $user, $pass, $options);
-} catch (\PDOException $e) {
-    throw new \PDOException($e->getMessage(), (int)$e->getCode());
-}
+// Conexión a la base de datos (PDO) y repositorio de usuarios
+$users = new UserRepository(Database::connect($config));
 
 // Clave secreta para firmar el token JWT (se define en JWT_SECRET)
 $secretKey = $config->jwtSecret;
 
 // Ruta de Login: Recibe username y password, y si son válidos, retorna un JWT
-$app->post('/api/login', function (Request $request, Response $response, $args) use ($pdo, $secretKey) {
+$app->post('/api/login', function (Request $request, Response $response, $args) use ($users, $secretKey, $config) {
     $params   = (array)$request->getParsedBody();
     $username = trim($params['username'] ?? '');
     $password = $params['password'] ?? '';
@@ -48,10 +37,7 @@ $app->post('/api/login', function (Request $request, Response $response, $args) 
         return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
     }
 
-    // Uso de prepared statement para evitar inyección SQL
-    $stmt = $pdo->prepare('SELECT id, username, password_hash FROM users WHERE username = :username');
-    $stmt->execute(['username' => $username]);
-    $user = $stmt->fetch();
+    $user = $users->findByUsername($username);
 
     if (!$user || !password_verify($password, $user['password_hash'])) {
         $data = ['error' => 'Invalid credentials'];
@@ -61,7 +47,7 @@ $app->post('/api/login', function (Request $request, Response $response, $args) 
 
     // Generación del token JWT
     $issuedAt   = new DateTimeImmutable();
-    $expire     = $issuedAt->modify('+1 hour')->getTimestamp(); // Token válido por 1 hora
+    $expire     = $issuedAt->modify('+' . $config->jwtTtl . ' seconds')->getTimestamp(); // Vigencia: JWT_TTL
     $serverName = $config->jwtIssuer;
 
     $tokenData = [
