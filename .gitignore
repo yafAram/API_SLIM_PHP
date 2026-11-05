@@ -1,0 +1,17 @@
+# Dependencias (se instalan con `composer install`)
+/vendor/
+composer.phar
+
+# Configuración local y secretos
+.env
+.env.*
+!.env.example
+
+# Archivos de editor y sistema
+.idea/
+.vscode/
+.DS_Store
+
+# Logs y caché
+*.log
+.phpunit.result.cache
