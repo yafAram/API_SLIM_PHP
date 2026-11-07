@@ -1,0 +1,10 @@
+RewriteEngine On
+
+# Entrega los archivos existentes tal cual y envía el resto a Slim
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]
+
+# Apache quita el encabezado Authorization; lo pasamos a PHP
+RewriteCond %{HTTP:Authorization} .
+RewriteRule ^ - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
